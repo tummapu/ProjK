@@ -137,7 +137,7 @@
             </div>
         </div>
 
-        <button class="btn-submit" id="btnSaveMetrics" onclick="saveLog()" disabled>Save Metrics</button>
+        <button class="btn-submit" id="btnSaveMetrics" onclick="saveLog()">Save Metrics</button>
     </div>
 
     <!-- DATE RANGE CALCULATOR CARD -->
@@ -251,18 +251,8 @@
         form.querySelectorAll('input[name="activityType"]').forEach(radio => {
             radio.addEventListener('change', () => {
                 toggleFormFields();
-                document.getElementById('btnSaveMetrics').disabled = true; 
             });
         });
-
-        form.querySelectorAll('input:not([name="activityType"]), select').forEach(input => {
-            input.addEventListener('input', enableSaveButton);
-            input.addEventListener('change', enableSaveButton);
-        });
-    }
-
-    function enableSaveButton() {
-        document.getElementById('btnSaveMetrics').disabled = false;
     }
 
     function toggleFormFields() {
@@ -325,6 +315,7 @@
                 document.getElementById('viewDate').value = savedEntry.date;
                 updateDashboard();
                 showStatus('Saved to Google Sheets.');
+                button.disabled = false;
             })
             .withFailureHandler(error => {
                 button.disabled = false;
