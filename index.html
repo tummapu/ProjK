@@ -200,8 +200,9 @@
 </div>
 
 <script>
-    const hasAppsScriptRuntime = Boolean(window.google && window.google.script && window.google.script.run);
+    const STORAGE_KEY = 'newbornActivityTracker.logs';
     let currentLogs = [];
+    let storageAvailable = true;
 
     window.onload = function() {
         const now = new Date();
@@ -212,17 +213,11 @@
         document.getElementById('rangeStart').value = today;
         document.getElementById('rangeEnd').value = today;
 
+        loadLogs();
         setupFormListeners();
         toggleFormFields();
         updateDashboard();
-
-        if (hasAppsScriptRuntime) {
-            refreshLogs();
-            window.addEventListener('focus', refreshLogs);
-            window.addEventListener('hashchange', refreshLogs);
-        } else {
-            showStatus('Open this app from its Google Apps Script web app URL to connect to Sheets.', true);
-        }
+        if (storageAvailable) showStatus('Ready. Records are saved only in this browser.');
     };
 
     function showStatus(message, isError = false) {
@@ -231,18 +226,32 @@
         status.classList.toggle('error', isError);
     }
 
-    function refreshLogs() {
-        if (!hasAppsScriptRuntime) return;
-        showStatus('Loading records from Google Sheets...');
-        google.script.run
-            .withSuccessHandler(logs => {
-                currentLogs = Array.isArray(logs) ? logs : [];
-                updateDashboard();
-                if (document.getElementById('rangeResultsBox').style.display === 'block') calculateRangeMetrics();
-                showStatus('Connected to Google Sheets.');
-            })
-            .withFailureHandler(error => showStatus(`Could not load records: ${error.message || error}`, true))
-            .getLogs();
+    function loadLogs() {
+        try {
+            const storedLogs = localStorage.getItem(STORAGE_KEY);
+            if (storedLogs === null) return;
+            const logs = JSON.parse(storedLogs);
+            if (!Array.isArray(logs)) throw new Error('Saved activity data has an invalid format.');
+            currentLogs = logs;
+        } catch (error) {
+            storageAvailable = false;
+            showStatus(`Could not load saved records: ${error.message || error}`, true);
+        }
+    }
+
+    function persistLogs(logs) {
+        if (!storageAvailable) {
+            showStatus('Browser storage is unavailable. This change was not saved.', true);
+            return false;
+        }
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+            return true;
+        } catch (error) {
+            storageAvailable = false;
+            showStatus(`Could not save records in this browser: ${error.message || error}`, true);
+            return false;
+        }
     }
 
     function setupFormListeners() {
@@ -263,8 +272,8 @@
     }
 
     function saveLog() {
-        if (!hasAppsScriptRuntime) {
-            showStatus('This page is not connected to Google Sheets. Open the Apps Script web app URL.', true);
+        if (!storageAvailable) {
+            showStatus('Browser storage is unavailable. Records cannot be saved.', true);
             return;
         }
 
@@ -302,45 +311,31 @@
         entry.mlAmount = activityType === 'feed' ? metricValue : 0;
         entry.wipes = activityType === 'diaper' ? metricValue : 0;
         entry.duration = activityType === 'sleep' ? metricValue : 0;
-
+        entry.id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        entry.createdAt = new Date().toISOString();
         const button = document.getElementById('btnSaveMetrics');
         button.disabled = true;
-        showStatus('Saving record to Google Sheets...');
-        google.script.run
-            .withSuccessHandler(savedEntry => {
-                currentLogs.push(savedEntry);
-                document.getElementById('feedAmount').value = '';
-                document.getElementById('wipesUsed').value = '';
-                document.getElementById('sleepDuration').value = '';
-                document.getElementById('viewDate').value = savedEntry.date;
-                updateDashboard();
-                showStatus('Saved to Google Sheets.');
-                button.disabled = false;
-            })
-            .withFailureHandler(error => {
-                button.disabled = false;
-                showStatus(`Could not save record: ${error.message || error}`, true);
-            })
-            .saveLog(entry);
+        const updatedLogs = [...currentLogs, entry];
+        if (persistLogs(updatedLogs)) {
+            currentLogs = updatedLogs;
+            document.getElementById('feedAmount').value = '';
+            document.getElementById('wipesUsed').value = '';
+            document.getElementById('sleepDuration').value = '';
+            document.getElementById('viewDate').value = entry.date;
+            updateDashboard();
+            showStatus('Saved in this browser.');
+        }
+        button.disabled = false;
     }
 
     function deleteLog(id) {
-        if (!hasAppsScriptRuntime || !confirm('Delete this record from Google Sheets?')) return;
-        showStatus('Deleting record...');
-        google.script.run
-            .withSuccessHandler(deleted => {
-                if (!deleted) {
-                    showStatus('That record was not found in Google Sheets.', true);
-                    refreshLogs();
-                    return;
-                }
-                currentLogs = currentLogs.filter(item => String(item.id) !== String(id));
-                updateDashboard();
-                if (document.getElementById('rangeResultsBox').style.display === 'block') calculateRangeMetrics();
-                showStatus('Record deleted.');
-            })
-            .withFailureHandler(error => showStatus(`Could not delete record: ${error.message || error}`, true))
-            .deleteLog(id);
+        if (!storageAvailable || !confirm('Delete this record from this browser?')) return;
+        const updatedLogs = currentLogs.filter(item => String(item.id) !== String(id));
+        if (!persistLogs(updatedLogs)) return;
+        currentLogs = updatedLogs;
+        updateDashboard();
+        if (document.getElementById('rangeResultsBox').style.display === 'block') calculateRangeMetrics();
+        showStatus('Record deleted from this browser.');
     }
 
     function calculateRangeMetrics() {
