@@ -19,6 +19,10 @@
         .container { width: 100%; max-width: 500px; }
         header { text-align: center; margin-bottom: 20px; padding: 10px; }
         h1 { font-size: 1.5rem; color: #2c3e50; }
+        .section-nav { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+        .section-nav a { color: #2c3e50; background: #fff; border: 1px solid #ccd1d9; border-radius: 6px; padding: 8px 12px; text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+        .connection-status { min-height: 1.25em; margin: 0 0 12px; font-size: 0.85rem; color: #607080; text-align: center; }
+        .connection-status.error { color: #b42318; }
         .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
         h2 { font-size: 1.1rem; margin-bottom: 15px; color: #34495e; border-bottom: 2px solid #ecf0f1; padding-bottom: 5px; }
         h3 { font-size: 1rem; color: #2c3e50; margin: 15px 0 8px 0; display: flex; align-items: center; justify-content: space-between;}
@@ -71,7 +75,14 @@
 <div class="container">
     <header>
         <h1>🍼 Newborn Activity Tracker</h1>
+        <nav class="section-nav" aria-label="Tracker sections">
+            <a href="#logForm">Log</a>
+            <a href="#dashboard">History</a>
+            <a href="#rangeCalculator">Date range</a>
+        </nav>
     </header>
+
+    <p class="connection-status" id="connectionStatus" role="status" aria-live="polite"></p>
 
     <!-- 1. ACTION PANEL LOG -->
     <div class="card" id="logForm">
@@ -130,7 +141,7 @@
     </div>
 
     <!-- DATE RANGE CALCULATOR CARD -->
-    <div class="card" style="border-left: 4px solid var(--range);">
+    <div class="card" id="rangeCalculator" style="border-left: 4px solid var(--range);">
         <h2>Date Range Calculator</h2>
         <div class="inline-group">
             <div class="form-group">
@@ -152,7 +163,7 @@
     </div>
 
     <!-- 2. HISTORY FILTER & SUMMARY HUB -->
-    <div class="form-group date-selector">
+    <div class="form-group date-selector" id="dashboard">
         <label for="viewDate">Target Dashboard Date:</label>
         <input type="date" id="viewDate" onchange="updateDashboard()">
     </div>
@@ -189,20 +200,50 @@
 </div>
 
 <script>
+    const hasAppsScriptRuntime = Boolean(window.google && window.google.script && window.google.script.run);
+    let currentLogs = [];
+
     window.onload = function() {
         const now = new Date();
-        const tzoffset = now.getTimezoneOffset() * 60000; 
-        const localISOTime = (new Date(now - tzoffset)).toISOString().slice(0, 16);
-        document.getElementById('logDateTime').value = localISOTime;
-        
-        const todayStr = now.toISOString().split('T')[0];
-        document.getElementById('viewDate').value = todayStr;
-        document.getElementById('rangeStart').value = todayStr;
-        document.getElementById('rangeEnd').value = todayStr;
-        
+        const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        const today = localDateTime.slice(0, 10);
+        document.getElementById('logDateTime').value = localDateTime;
+        document.getElementById('viewDate').value = today;
+        document.getElementById('rangeStart').value = today;
+        document.getElementById('rangeEnd').value = today;
+
         setupFormListeners();
+        toggleFormFields();
         updateDashboard();
+
+        if (hasAppsScriptRuntime) {
+            refreshLogs();
+            window.addEventListener('focus', refreshLogs);
+            window.addEventListener('hashchange', refreshLogs);
+        } else {
+            showStatus('Open this app from its Google Apps Script web app URL to connect to Sheets.', true);
+        }
     };
+
+    function showStatus(message, isError = false) {
+        const status = document.getElementById('connectionStatus');
+        status.textContent = message;
+        status.classList.toggle('error', isError);
+    }
+
+    function refreshLogs() {
+        if (!hasAppsScriptRuntime) return;
+        showStatus('Loading records from Google Sheets...');
+        google.script.run
+            .withSuccessHandler(logs => {
+                currentLogs = Array.isArray(logs) ? logs : [];
+                updateDashboard();
+                if (document.getElementById('rangeResultsBox').style.display === 'block') calculateRangeMetrics();
+                showStatus('Connected to Google Sheets.');
+            })
+            .withFailureHandler(error => showStatus(`Could not load records: ${error.message || error}`, true))
+            .getLogs();
+    }
 
     function setupFormListeners() {
         const form = document.getElementById('logForm');
@@ -232,81 +273,105 @@
     }
 
     function saveLog() {
-        const activityType = document.querySelector('input[name="activityType"]:checked').value;
-        const dateTimeValue = document.getElementById('logDateTime').value;
-        
-        if (!dateTimeValue) {
-            alert("Please pick a date and time stamp.");
+        if (!hasAppsScriptRuntime) {
+            showStatus('This page is not connected to Google Sheets. Open the Apps Script web app URL.', true);
             return;
         }
 
-        const dateObj = new Date(dateTimeValue);
-        const logDate = dateObj.toISOString().split('T')[0];
-        const logTime = dateObj.toTimeString().split(' ')[0].substring(0,5);
-
-        let entry = {
-            id: Date.now(),
-            type: activityType,
-            date: logDate,
-            time: logTime
-        };
-
-        if (activityType === 'feed') {
-            entry.feedType = document.getElementById('feedType').value;
-            entry.mlAmount = parseInt(document.getElementById('feedAmount').value) || 0;
-        } else if (activityType === 'diaper') {
-            entry.feedType = 'Diaper Change';
-            entry.wipes = parseInt(document.getElementById('wipesUsed').value) || 0;
-        } else if (activityType === 'sleep') {
-            entry.feedType = 'Sleep Log';
-            entry.duration = parseInt(document.getElementById('sleepDuration').value) || 0;
+        const activityType = document.querySelector('input[name="activityType"]:checked').value;
+        const dateTimeValue = document.getElementById('logDateTime').value;
+        if (!dateTimeValue) {
+            showStatus('Choose a date and time before saving.', true);
+            return;
         }
 
-        let currentLogs = JSON.parse(localStorage.getItem('babyLogs')) || [];
-        currentLogs.push(entry);
-        localStorage.setItem('babyLogs', JSON.stringify(currentLogs));
+        const entry = { type: activityType, date: dateTimeValue.slice(0, 10), time: dateTimeValue.slice(11, 16) };
+        let metricId;
+        let metricName;
+        if (activityType === 'feed') {
+            metricId = 'feedAmount';
+            metricName = 'milk volume';
+            entry.feedType = document.getElementById('feedType').value;
+        } else if (activityType === 'diaper') {
+            metricId = 'wipesUsed';
+            metricName = 'wipe count';
+            entry.feedType = 'Diaper Change';
+        } else {
+            metricId = 'sleepDuration';
+            metricName = 'sleep duration';
+            entry.feedType = 'Sleep Log';
+        }
 
-        document.getElementById('feedAmount').value = '';
-        document.getElementById('wipesUsed').value = '';
-        document.getElementById('sleepDuration').value = '';
+        const metricInput = document.getElementById(metricId);
+        const metricValue = Number(metricInput.value);
+        if (metricInput.value.trim() === '' || !Number.isFinite(metricValue) || metricValue < 0) {
+            showStatus(`Enter a non-negative ${metricName}.`, true);
+            metricInput.focus();
+            return;
+        }
+        entry.mlAmount = activityType === 'feed' ? metricValue : 0;
+        entry.wipes = activityType === 'diaper' ? metricValue : 0;
+        entry.duration = activityType === 'sleep' ? metricValue : 0;
 
-        document.getElementById('btnSaveMetrics').disabled = true;
-
-        document.getElementById('viewDate').value = logDate;
-        updateDashboard();
+        const button = document.getElementById('btnSaveMetrics');
+        button.disabled = true;
+        showStatus('Saving record to Google Sheets...');
+        google.script.run
+            .withSuccessHandler(savedEntry => {
+                currentLogs.push(savedEntry);
+                document.getElementById('feedAmount').value = '';
+                document.getElementById('wipesUsed').value = '';
+                document.getElementById('sleepDuration').value = '';
+                document.getElementById('viewDate').value = savedEntry.date;
+                updateDashboard();
+                showStatus('Saved to Google Sheets.');
+            })
+            .withFailureHandler(error => {
+                button.disabled = false;
+                showStatus(`Could not save record: ${error.message || error}`, true);
+            })
+            .saveLog(entry);
     }
 
     function deleteLog(id) {
-        let currentLogs = JSON.parse(localStorage.getItem('babyLogs')) || [];
-        currentLogs = currentLogs.filter(item => item.id !== id);
-        localStorage.setItem('babyLogs', JSON.stringify(currentLogs));
-        updateDashboard();
-        if(document.getElementById('rangeResultsBox').style.display === 'block') {
-            calculateRangeMetrics();
-        }
+        if (!hasAppsScriptRuntime || !confirm('Delete this record from Google Sheets?')) return;
+        showStatus('Deleting record...');
+        google.script.run
+            .withSuccessHandler(deleted => {
+                if (!deleted) {
+                    showStatus('That record was not found in Google Sheets.', true);
+                    refreshLogs();
+                    return;
+                }
+                currentLogs = currentLogs.filter(item => String(item.id) !== String(id));
+                updateDashboard();
+                if (document.getElementById('rangeResultsBox').style.display === 'block') calculateRangeMetrics();
+                showStatus('Record deleted.');
+            })
+            .withFailureHandler(error => showStatus(`Could not delete record: ${error.message || error}`, true))
+            .deleteLog(id);
     }
 
     function calculateRangeMetrics() {
         const start = document.getElementById('rangeStart').value;
         const end = document.getElementById('rangeEnd').value;
 
-        if(!start || !end) {
-            alert("Please select both start and end dates.");
+        if (!start || !end) {
+            showStatus('Select both dates for the range.', true);
             return;
         }
-        if(start > end) {
-            alert("Start date cannot be after the end date.");
+        if (start > end) {
+            showStatus('The start date cannot be after the end date.', true);
             return;
         }
 
-        const currentLogs = JSON.parse(localStorage.getItem('babyLogs')) || [];
         let rangeMilk = 0, rangeSleep = 0, rangeWipes = 0;
 
         currentLogs.forEach(log => {
             if (log.date >= start && log.date <= end) {
-                if (log.type === 'feed' && log.mlAmount) rangeMilk += log.mlAmount;
-                else if (log.type === 'diaper' && log.wipes) rangeWipes += log.wipes;
-                else if (log.type === 'sleep' && log.duration) rangeSleep += log.duration;
+                if (log.type === 'feed') rangeMilk += Number(log.mlAmount) || 0;
+                else if (log.type === 'diaper') rangeWipes += Number(log.wipes) || 0;
+                else if (log.type === 'sleep') rangeSleep += Number(log.duration) || 0;
             }
         });
 
@@ -328,10 +393,18 @@
         return `${hours}:${minutes} ${ampm}`;
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, character => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[character]);
+    }
+
     function updateDashboard() {
         const filterDate = document.getElementById('viewDate').value;
-        const currentLogs = JSON.parse(localStorage.getItem('babyLogs')) || [];
-        
         const dayLogs = currentLogs.filter(log => log.date === filterDate);
         dayLogs.sort((a,b) => b.time.localeCompare(a.time));
 
@@ -344,39 +417,39 @@
 
             if (item.type === 'feed') {
                 countF++;
-                totalMl += item.mlAmount;
+                totalMl += Number(item.mlAmount) || 0;
                 const badge = item.feedType === 'Formula' ? 'badge-formula' : 'badge-breast';
                 feedsHtml += `
                     <div class="log-item">
                         <div>
-                            <span class="type-badge ${badge}">${item.feedType}</span> <strong>${item.mlAmount} ml</strong>
-                            <div class="log-meta">Logged at ${timeFormatted}</div>
+                            <span class="type-badge ${badge}">${escapeHtml(item.feedType)}</span> <strong>${Number(item.mlAmount) || 0} ml</strong>
+                            <div class="log-meta">Logged at ${escapeHtml(timeFormatted)}</div>
                         </div>
-                        <button class="btn-delete" onclick="deleteLog(${item.id})">❌</button>
+                        <button type="button" class="btn-delete" data-id="${escapeHtml(item.id)}" aria-label="Delete record">❌</button>
                     </div>`;
             } 
             else if (item.type === 'diaper') {
                 countD++;
-                totalWipes += item.wipes;
+                totalWipes += Number(item.wipes) || 0;
                 diapersHtml += `
                     <div class="log-item">
                         <div>
-                            <span class="type-badge badge-diaper">Diaper Change</span> <span>Cleaned with <strong>${item.wipes} wipes</strong></span>
-                            <div class="log-meta">Logged at ${timeFormatted}</div>
+                            <span class="type-badge badge-diaper">Diaper Change</span> <span>Cleaned with <strong>${Number(item.wipes) || 0} wipes</strong></span>
+                            <div class="log-meta">Logged at ${escapeHtml(timeFormatted)}</div>
                         </div>
-                        <button class="btn-delete" onclick="deleteLog(${item.id})">❌</button>
+                        <button type="button" class="btn-delete" data-id="${escapeHtml(item.id)}" aria-label="Delete record">❌</button>
                     </div>`;
             } 
             else if (item.type === 'sleep') {
                 countS++;
-                totalMins += item.duration;
+                totalMins += Number(item.duration) || 0;
                 sleepHtml += `
                     <div class="log-item">
                         <div>
-                            <span class="type-badge badge-sleep">Sleep / Nap</span> <span>Duration: <strong>${item.duration} mins</strong></span>
-                            <div class="log-meta">Logged at ${timeFormatted}</div>
+                            <span class="type-badge badge-sleep">Sleep / Nap</span> <span>Duration: <strong>${Number(item.duration) || 0} mins</strong></span>
+                            <div class="log-meta">Logged at ${escapeHtml(timeFormatted)}</div>
                         </div>
-                        <button class="btn-delete" onclick="deleteLog(${item.id})">❌</button>
+                        <button type="button" class="btn-delete" data-id="${escapeHtml(item.id)}" aria-label="Delete record">❌</button>
                     </div>`;
             }
         });
@@ -392,6 +465,10 @@
         document.getElementById('catFeedContainer').innerHTML = feedsHtml || '<p class="empty-msg">No feeding events.</p>';
         document.getElementById('catDiaperContainer').innerHTML = diapersHtml || '<p class="empty-msg">No diaper changes.</p>';
         document.getElementById('catSleepContainer').innerHTML = sleepHtml || '<p class="empty-msg">No sleep logs recorded.</p>';
+
+        document.querySelectorAll('.btn-delete').forEach(button => {
+            button.addEventListener('click', () => deleteLog(button.dataset.id));
+        });
     }
 </script>
 </body>
