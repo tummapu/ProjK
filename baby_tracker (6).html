@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Baby Monitor App</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --success: #2ecc71;
+            --sleep: #9b59b6;
+            --range: #e74c3c;
+            --bg: #f5f7fa;
+            --card: #ffffff;
+            --text: #333333;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg); color: var(--text); padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        .container { width: 100%; max-width: 500px; }
+        header { text-align: center; margin-bottom: 20px; padding: 10px; }
+        h1 { font-size: 1.5rem; color: #2c3e50; }
+        .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        h2 { font-size: 1.1rem; margin-bottom: 15px; color: #34495e; border-bottom: 2px solid #ecf0f1; padding-bottom: 5px; }
+        h3 { font-size: 1rem; color: #2c3e50; margin: 15px 0 8px 0; display: flex; align-items: center; justify-content: space-between;}
+        .form-group { margin-bottom: 12px; display: flex; flex-direction: column; }
+        .inline-group { display: flex; gap: 10px; margin-bottom: 12px; }
+        .inline-group .form-group { flex: 1; margin-bottom: 0; }
+        label { font-size: 0.85rem; font-weight: bold; margin-bottom: 5px; color: #7f8c8d; }
+        input, select, button { padding: 10px; border-radius: 6px; border: 1px solid #ccd1d9; font-size: 1rem; width: 100%; }
+        input:focus, select:focus { outline: none; border-color: var(--primary); }
+        .radio-group { display: flex; gap: 8px; }
+        .radio-label { display: flex; align-items: center; justify-content: center; background: #edf2f7; padding: 10px; border-radius: 6px; cursor: pointer; flex: 1; font-weight: 500; font-size: 0.85rem; text-align: center; }
+        input[type="radio"] { display: none; }
+        input[type="radio"]:checked + .radio-label { color: white; }
+        #typeFeed:checked + .radio-label { background: var(--primary); }
+        #typeDiaper:checked + .radio-label { background: #e67e22; }
+        #typeSleep:checked + .radio-label { background: var(--sleep); }
+        
+        .btn-submit { background: var(--success); color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 5px; }
+        .btn-submit:hover { background: #27ae60; }
+        .btn-submit:disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; }
+        
+        .btn-calc { background: var(--range); color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 5px; }
+        .btn-calc:hover { background: #c0392b; }
+        .grid-summary { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 15px; }
+        .summary-box { background: var(--card); padding: 12px 5px; border-radius: 12px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .summary-box label { font-size: 0.75rem; }
+        .summary-count { font-size: 1.3rem; font-weight: bold; margin-top: 5px; word-break: break-all; }
+        .count-f { color: var(--primary); }
+        .count-d { color: #e67e22; }
+        .count-s { color: var(--sleep); }
+        .date-selector { margin-bottom: 15px; }
+        .log-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #edf2f7; font-size: 0.9rem; background: #fafbfc; margin-bottom: 5px; border-radius: 6px; }
+        .log-list { max-height: 350px; overflow-y: auto; }
+        .log-meta { color: #7f8c8d; font-size: 0.8rem; margin-top: 2px; }
+        .btn-delete { background: none; border: none; color: #e74c3c; width: auto; padding: 5px; cursor: pointer; font-size: 0.85rem; }
+        .type-badge { padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; color: white; display: inline-block; }
+        .badge-formula { background: #3498db; }
+        .badge-breast { background: #9b59b6; }
+        .badge-diaper { background: #e67e22; }
+        .badge-sleep { background: #34495e; }
+        .cat-total { font-size: 0.8rem; color: #7f8c8d; font-weight: normal; }
+        .empty-msg { font-size: 0.85rem; color: #95a5a6; font-style: italic; padding: 5px 10px; }
+        .range-results { background: #fdfefe; border: 1px dashed #ccd1d9; border-radius: 8px; padding: 12px; margin-top: 12px; display: none;}
+        .range-results p { font-size: 0.9rem; margin-bottom: 6px; }
+        .range-results p:last-child { margin-bottom: 0; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>🍼 Newborn Activity Tracker</h1>
+    </header>
+
+    <!-- 1. ACTION PANEL LOG -->
+    <div class="card" id="logForm">
+        <h2>Log Activity</h2>
+        <div class="form-group">
+            <label>Select Category</label>
+            <div class="radio-group">
+                <input type="radio" id="typeFeed" name="activityType" value="feed" checked>
+                <label for="typeFeed" class="radio-label">🍼 Feed</label>
+                
+                <input type="radio" id="typeDiaper" name="activityType" value="diaper">
+                <label for="typeDiaper" class="radio-label">💩 Diaper</label>
+
+                <input type="radio" id="typeSleep" name="activityType" value="sleep">
+                <label for="typeSleep" class="radio-label">😴 Sleep</label>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="logDateTime">Date & Time</label>
+            <input type="datetime-local" id="logDateTime" required>
+        </div>
+
+        <!-- Feeding Metrics -->
+        <div id="feedingFields">
+            <div class="form-group">
+                <label for="feedType">Feed Method</label>
+                <select id="feedType">
+                    <option value="Formula">Formula Milk</option>
+                    <option value="Breast Feed">Breast Feed</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="feedAmount">Milk Volume (ml)</label>
+                <input type="number" id="feedAmount" placeholder="e.g. 90" min="0">
+            </div>
+        </div>
+
+        <!-- Diaper Metrics -->
+        <div id="diaperFields" style="display: none;">
+            <div class="form-group">
+                <label for="wipesUsed">Wet Wipes Used (Count)</label>
+                <input type="number" id="wipesUsed" placeholder="e.g. 2" min="0">
+            </div>
+        </div>
+
+        <!-- Sleep Metrics -->
+        <div id="sleepFields" style="display: none;">
+            <div class="form-group">
+                <label for="sleepDuration">Duration (Minutes)</label>
+                <input type="number" id="sleepDuration" placeholder="e.g. 45" min="0">
+            </div>
+        </div>
+
+        <button class="btn-submit" id="btnSaveMetrics" onclick="saveLog()" disabled>Save Metrics</button>
+    </div>
+
+    <!-- DATE RANGE CALCULATOR CARD -->
+    <div class="card" style="border-left: 4px solid var(--range);">
+        <h2>Date Range Calculator</h2>
+        <div class="inline-group">
+            <div class="form-group">
+                <label for="rangeStart">Start Date</label>
+                <input type="date" id="rangeStart">
+            </div>
+            <div class="form-group">
+                <label for="rangeEnd">End Date</label>
+                <input type="date" id="rangeEnd">
+            </div>
+        </div>
+        <button class="btn-calc" onclick="calculateRangeMetrics()">Calculate Range Totals</button>
+        
+        <div class="range-results" id="rangeResultsBox">
+            <p>🍼 <strong>Total Milk Consumed:</strong> <span id="resTotalMilk">0</span> ml</p>
+            <p>😴 <strong>Total Nap Time:</strong> <span id="resTotalSleep">0</span> mins (<span id="resTotalSleepHrs">0</span> hrs)</p>
+            <p>🧻 <strong>Total Wet Wipes Used:</strong> <span id="resTotalWipes">0</span> wipes</p>
+        </div>
+    </div>
+
+    <!-- 2. HISTORY FILTER & SUMMARY HUB -->
+    <div class="form-group date-selector">
+        <label for="viewDate">Target Dashboard Date:</label>
+        <input type="date" id="viewDate" onchange="updateDashboard()">
+    </div>
+
+    <div class="grid-summary">
+        <div class="summary-box">
+            <label>Feeds Total</label>
+            <div class="summary-count count-f" id="countFeeds">0</div>
+        </div>
+        <div class="summary-box">
+            <label>Diaper Changes</label>
+            <div class="summary-count count-d" id="countDiapers">0</div>
+        </div>
+        <div class="summary-box">
+            <label>Sleep Cycles</label>
+            <div class="summary-count count-s" id="countSleep">0</div>
+        </div>
+    </div>
+
+    <!-- 3. CATEGORIZED TIMELINE LOGS -->
+    <div class="card">
+        <h2>Daily Breakdown</h2>
+        <div class="log-list">
+            <h3>🍼 Feedings <span class="cat-total" id="subTotalFeeds"></span></h3>
+            <div id="catFeedContainer"></div>
+
+            <h3>💩 Diaper Changes <span class="cat-total" id="subTotalDiapers"></span></h3>
+            <div id="catDiaperContainer"></div>
+
+            <h3>😴 Sleep & Naps <span class="cat-total" id="subTotalSleep"></span></h3>
+            <div id="catSleepContainer"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    window.onload = function() {
+        const now = new Date();
+        const tzoffset = now.getTimezoneOffset() * 60000; 
+        const localISOTime = (new Date(now - tzoffset)).toISOString().slice(0, 16);
+        document.getElementById('logDateTime').value = localISOTime;
+        
+        const todayStr = now.toISOString().split('T')[0];
+        document.getElementById('viewDate').value = todayStr;
+        document.getElementById('rangeStart').value = todayStr;
+        document.getElementById('rangeEnd').value = todayStr;
+        
+        setupFormListeners();
+        updateDashboard();
+    };
+
+    function setupFormListeners() {
+        const form = document.getElementById('logForm');
+        
+        form.querySelectorAll('input[name="activityType"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                toggleFormFields();
+                document.getElementById('btnSaveMetrics').disabled = true; 
+            });
+        });
+
+        form.querySelectorAll('input:not([name="activityType"]), select').forEach(input => {
+            input.addEventListener('input', enableSaveButton);
+            input.addEventListener('change', enableSaveButton);
+        });
+    }
+
+    function enableSaveButton() {
+        document.getElementById('btnSaveMetrics').disabled = false;
+    }
+
+    function toggleFormFields() {
+        const type = document.querySelector('input[name="activityType"]:checked').value;
+        document.getElementById('feedingFields').style.display = type === 'feed' ? 'block' : 'none';
+        document.getElementById('diaperFields').style.display = type === 'diaper' ? 'block' : 'none';
+        document.getElementById('sleepFields').style.display = type === 'sleep' ? 'block' : 'none';
+    }
+
+    function saveLog() {
+        const activityType = document.querySelector('input[name="activityType"]:checked').value;
+        const dateTimeValue = document.getElementById('logDateTime').value;
+        
+        if (!dateTimeValue) {
+            alert("Please pick a date and time stamp.");
+            return;
+        }
+
+        const dateObj = new Date(dateTimeValue);
+        const logDate = dateObj.toISOString().split('T')[0];
+        const logTime = dateObj.toTimeString().split(' ')[0].substring(0,5);
+
+        let entry = {
+            id: Date.now(),
+            type: activityType,
+            date: logDate,
+            time: logTime
+        };
+
+        if (activityType === 'feed') {
+            entry.feedType = document.getElementById('feedType').value;
+            entry.mlAmount = parseInt(document.getElementById('feedAmount').value) || 0;
+        } else if (activityType === 'diaper') {
+            entry.feedType = 'Diaper Change';
+            entry.wipes = parseInt(document.getElementById('wipesUsed').value) || 0;
+        } else if (activityType === 'sleep') {
+            entry.feedType = 'Sleep Log';
+            entry.duration = parseInt(document.getElementById('sleepDuration').value) || 0;
+        }
+
+        let currentLogs = JSON.parse(localStorage.getItem('babyLogs')) || [];
+        currentLogs.push(entry);
+        localStorage.setItem('babyLogs', JSON.stringify(currentLogs));
+
+        document.getElementById('feedAmount').value = '';
+        document.getElementById('wipesUsed').value = '';
+        document.getElementById('sleepDuration').value = '';
+
+        document.getElementById('btnSaveMetrics').disabled = true;
+
+        document.getElementById('viewDate').value = logDate;
+        updateDashboard();
+    }
+
+    function deleteLog(id) {
+        let currentLogs = JSON.parse(localStorage.getItem('babyLogs')) || [];
+        currentLogs = currentLogs.filter(item => item.id !== id);
+        localStorage.setItem('babyLogs', JSON.stringify(currentLogs));
+        updateDashboard();
+        if(document.getElementById('rangeResultsBox').style.display === 'block') {
+            calculateRangeMetrics();
+        }
+    }
+
+    function calculateRangeMetrics() {
+        const start = document.getElementById('rangeStart').value;
+        const end = document.getElementById('rangeEnd').value;
+
+        if(!start || !end) {
+            alert("Please select both start and end dates.");
+            return;
+        }
+        if(start > end) {
+            alert("Start date cannot be after the end date.");
+            return;
+        }
+
+        const currentLogs = JSON.parse(localStorage.getItem('babyLogs')) || [];
+        let rangeMilk = 0, rangeSleep = 0, rangeWipes = 0;
+
+        currentLogs.forEach(log => {
+            if (log.date >= start && log.date <= end) {
+                if (log.type === 'feed' && log.mlAmount) rangeMilk += log.mlAmount;
+                else if (log.type === 'diaper' && log.wipes) rangeWipes += log.wipes;
+                else if (log.type === 'sleep' && log.duration) rangeSleep += log.duration;
+            }
+        });
+
+        document.getElementById('resTotalMilk').innerText = rangeMilk;
+        document.getElementById('resTotalSleep').innerText = rangeSleep;
+        document.getElementById('resTotalSleepHrs').innerText = (rangeSleep / 60).toFixed(1);
+        document.getElementById('resTotalWipes').innerText = rangeWipes;
+        document.getElementById('rangeResultsBox').style.display = 'block';
+    }
+
+    function formatTime(timeStr) {
+        if(!timeStr || timeStr.includes('undefined')) return '';
+        const pieces = timeStr.split(':');
+        if(pieces.length < 2) return '';
+        let hours = parseInt(pieces[0]);
+        const minutes = pieces[1];
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        return `${hours}:${minutes} ${ampm}`;
+    }
+
+    function updateDashboard() {
+        const filterDate = document.getElementById('viewDate').value;
+        const currentLogs = JSON.parse(localStorage.getItem('babyLogs')) || [];
+        
+        const dayLogs = currentLogs.filter(log => log.date === filterDate);
+        dayLogs.sort((a,b) => b.time.localeCompare(a.time));
+
+        let feedsHtml = '', diapersHtml = '', sleepHtml = '';
+        let countF = 0, countD = 0, countS = 0;
+        let totalMl = 0, totalWipes = 0, totalMins = 0;
+
+        dayLogs.forEach(item => {
+            const timeFormatted = formatTime(item.time);
+
+            if (item.type === 'feed') {
+                countF++;
+                totalMl += item.mlAmount;
+                const badge = item.feedType === 'Formula' ? 'badge-formula' : 'badge-breast';
+                feedsHtml += `
+                    <div class="log-item">
+                        <div>
+                            <span class="type-badge ${badge}">${item.feedType}</span> <strong>${item.mlAmount} ml</strong>
+                            <div class="log-meta">Logged at ${timeFormatted}</div>
+                        </div>
+                        <button class="btn-delete" onclick="deleteLog(${item.id})">❌</button>
+                    </div>`;
+            } 
+            else if (item.type === 'diaper') {
+                countD++;
+                totalWipes += item.wipes;
+                diapersHtml += `
+                    <div class="log-item">
+                        <div>
+                            <span class="type-badge badge-diaper">Diaper Change</span> <span>Cleaned with <strong>${item.wipes} wipes</strong></span>
+                            <div class="log-meta">Logged at ${timeFormatted}</div>
+                        </div>
+                        <button class="btn-delete" onclick="deleteLog(${item.id})">❌</button>
+                    </div>`;
+            } 
+            else if (item.type === 'sleep') {
+                countS++;
+                totalMins += item.duration;
+                sleepHtml += `
+                    <div class="log-item">
+                        <div>
+                            <span class="type-badge badge-sleep">Sleep / Nap</span> <span>Duration: <strong>${item.duration} mins</strong></span>
+                            <div class="log-meta">Logged at ${timeFormatted}</div>
+                        </div>
+                        <button class="btn-delete" onclick="deleteLog(${item.id})">❌</button>
+                    </div>`;
+            }
+        });
+
+        document.getElementById('countFeeds').innerText = countF;
+        document.getElementById('countDiapers').innerText = countD;
+        document.getElementById('countSleep').innerText = countS;
+
+        document.getElementById('subTotalFeeds').innerText = countF > 0 ? `(Vol: ${totalMl} ml)` : '';
+        document.getElementById('subTotalDiapers').innerText = countD > 0 ? `(Wipes: ${totalWipes})` : '';
+        document.getElementById('subTotalSleep').innerText = countS > 0 ? `(Time: ${totalMins} mins)` : '';
+
+        document.getElementById('catFeedContainer').innerHTML = feedsHtml || '<p class="empty-msg">No feeding events.</p>';
+        document.getElementById('catDiaperContainer').innerHTML = diapersHtml || '<p class="empty-msg">No diaper changes.</p>';
+        document.getElementById('catSleepContainer').innerHTML = sleepHtml || '<p class="empty-msg">No sleep logs recorded.</p>';
+    }
+</script>
+</body>
+</html>
